@@ -73,13 +73,13 @@ class HajimeBot(discord.Client):
 bot = HajimeBot()
 
 
-@bot.tree.command(name="ping", description="疎通確認(レイテンシだけ返す)")
+@bot.tree.command(name="hjm-ping", description="Hajime-AI-Bot 疎通確認(レイテンシだけ返す)")
 async def cmd_ping(interaction: discord.Interaction) -> None:
     latency_ms = round(bot.latency * 1000)
-    await interaction.response.send_message(f"pong (latency: {latency_ms}ms)")
+    await interaction.response.send_message(f"pong (Hajime-AI-Bot, latency: {latency_ms}ms)")
 
 
-@bot.tree.command(name="health", description="Bot のヘルスチェック(バージョン・稼働時間)")
+@bot.tree.command(name="hjm-health", description="Hajime-AI-Bot のヘルスチェック")
 async def cmd_health(interaction: discord.Interaction) -> None:
     uptime_sec = int(time.time() - bot.started_at)
     uptime_str = f"{uptime_sec // 3600}h {(uptime_sec % 3600) // 60}m {uptime_sec % 60}s"
