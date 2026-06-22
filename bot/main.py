@@ -1,12 +1,14 @@
 """Hajime-AI-Bot エントリポイント。
 
-Phase 2 では `/ping` と `/health` だけ実装(常駐確認用骨組み)。
-キュレーション機能・基礎解説機能は Phase 3 で features/ 配下に追加し、
-ここから読み込む(Xapp と同パターン)。
+Phase 2: `/hjm-ping` / `/hjm-health` の常駐確認骨組み。
+Phase 3-A: `/hjm-curate` + `/hjm-watch` グループ → #hajime-curation
+Phase 3-B: `/hjm-basics` + `/hjm-basics-history` → #hajime-basics
+スケジューラは 07:00 JST に curation、12:00 JST に basics を回す。
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -16,11 +18,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import discord
+import yaml
 from discord import app_commands
 from dotenv import load_dotenv
 
 from . import __version__
 from . import db as _db
+from . import scheduler as _scheduler
+from .features.basics import commands as _basics_commands
+from .features.curation import commands as _curation_commands
+from .features.curation import repo as _curation_repo
 
 # --- 環境変数読み込み ------------------------------------------------------
 ENV_PATH = Path("/opt/hajime-ai-bot/.env")
@@ -67,7 +74,21 @@ class HajimeBot(discord.Client):
         self.tree.copy_global_to(guild=guild)
         synced = await self.tree.sync(guild=guild)
         log.info("Slash commands synced to guild=%s (count=%d)", GUILD_ID, len(synced))
-        # Phase 3 で scheduler を起動する(現状は何もしない)
+        # config.yaml の watch_accounts を起動時に DB と sync
+        try:
+            entries = _load_config_watch_accounts()
+            if entries:
+                added, kept = await asyncio.to_thread(
+                    _curation_repo.sync_from_config, entries
+                )
+                log.info(
+                    "startup sync_from_config: added=%d kept=%d (total=%d)",
+                    added, kept, added + kept,
+                )
+        except Exception:
+            log.exception("startup sync_from_config failed (non-fatal)")
+        # APScheduler を起動(curation 07:00 / basics 12:00 JST)
+        _scheduler.start_scheduler(self)
 
 
 bot = HajimeBot()
@@ -96,6 +117,20 @@ async def cmd_health(interaction: discord.Interaction) -> None:
         f"- now: `{now_jst}`"
     )
     await interaction.response.send_message(msg)
+
+
+# 機能パッケージのコマンド登録(setup_hook での tree.sync 前に呼ぶ必要がある)
+_curation_commands.setup(bot)
+_basics_commands.setup(bot)
+
+
+def _load_config_watch_accounts() -> list[dict]:
+    config_path = Path(__file__).resolve().parents[1] / "config.yaml"
+    if not config_path.exists():
+        return []
+    data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    entries = data.get("watch_accounts", [])
+    return entries if isinstance(entries, list) else []
 
 
 async def _post_system_log(content: str) -> None:
