@@ -18,6 +18,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from .features.basics.dispatcher import generate_and_dispatch as basics_generate_and_dispatch
+from .features.cases.dispatcher import generate_and_dispatch as cases_generate_and_dispatch
 from .features.curation.dispatcher import run_and_dispatch as curation_run_and_dispatch
 
 if TYPE_CHECKING:
@@ -60,6 +61,20 @@ def start_scheduler(bot: "discord.Client") -> AsyncIOScheduler:
         kwargs={"trigger": "daily_cron"},
         id="basics.daily",
         name="basics: daily 12:00 JST",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,
+    )
+
+    # 自社内製事例: 毎週火曜 09:00 JST に未配信事例から 1 件 → #hajime-cases へ。
+    # 手動 /hjm-case-post-now でも同じ dispatcher を呼ぶ。
+    sched.add_job(
+        cases_generate_and_dispatch,
+        CronTrigger(day_of_week="tue", hour=9, minute=0, timezone="Asia/Tokyo"),
+        args=[bot],
+        kwargs={"trigger": "weekly_cron"},
+        id="cases.weekly",
+        name="cases: weekly Tue 09:00 JST",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=3600,

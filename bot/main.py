@@ -1,9 +1,9 @@
 """Hajime-AI-Bot エントリポイント。
 
 Phase 2: `/hjm-ping` / `/hjm-health` の常駐確認骨組み。
-Phase 3-A: `/hjm-curate` + `/hjm-watch` グループ → #hajime-curation
-Phase 3-B: `/hjm-basics` + `/hjm-basics-history` → #hajime-basics
-スケジューラは 07:00 JST に curation、12:00 JST に basics を回す。
+Phase 3-A: `/hjm-curate` + `/hjm-watch` グループ → #hajime-curation (07:00 JST)
+Phase 3-B: `/hjm-basics` + `/hjm-basics-history` → #hajime-basics (12:00 JST)
+Phase 4-A: `/hjm-case-*` + #hajime-case-input 自動取り込み → #hajime-cases (火 09:00 JST)
 """
 
 from __future__ import annotations
@@ -26,6 +26,8 @@ from . import __version__
 from . import db as _db
 from . import scheduler as _scheduler
 from .features.basics import commands as _basics_commands
+from .features.cases import commands as _cases_commands
+from .features.cases import message_handler as _cases_message_handler
 from .features.curation import commands as _curation_commands
 from .features.curation import repo as _curation_repo
 
@@ -122,6 +124,16 @@ async def cmd_health(interaction: discord.Interaction) -> None:
 # 機能パッケージのコマンド登録(setup_hook での tree.sync 前に呼ぶ必要がある)
 _curation_commands.setup(bot)
 _basics_commands.setup(bot)
+_cases_commands.setup(bot)
+
+
+@bot.event
+async def on_message(message: discord.Message) -> None:
+    """#hajime-case-input への投稿を自動取り込み。
+
+    他のチャンネル・Bot 自身のメッセージ・短すぎる投稿は handler 側で弾く。
+    """
+    await _cases_message_handler.handle_message(bot, message)
 
 
 def _load_config_watch_accounts() -> list[dict]:
