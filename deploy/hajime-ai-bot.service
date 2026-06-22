@@ -1,0 +1,21 @@
+[Unit]
+Description=Hajime AI Juku Bot (Discord, X 自動運用)
+Documentation=https://github.com/ftaishi6/Hajime-AI-Bot
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/hajime-ai-bot/repo
+EnvironmentFile=/opt/hajime-ai-bot/.env
+ExecStart=/opt/hajime-ai-bot/venv/bin/python -m bot.main
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

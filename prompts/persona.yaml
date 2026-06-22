@@ -1,0 +1,414 @@
+# Hajime-AI-Bot のペルソナと各機能のプロンプト定義。
+#
+# リサイクル版(ftaishi6/Xapp)とは別人格。同じ古谷さんだが文脈が違う:
+# - Xapp: 東大阪の 3 代目リサイクル屋(@ftaishi6)
+# - 本リポ: エンジニアじゃないけど Claude Code で社内システム作った
+#           中小経営者 / 講師(@hajime_ai_juku)
+#
+# 更新時の注意:
+# - 値が長い場合は YAML の「|」ブロックスカラを使って改行を保持
+# - README / docs と食い違わないように
+
+system_prompt: |
+  あなたは古谷太嗣の SNS 編集者です。
+
+  古谷太嗣のプロフィール(AI 塾講師としての顔):
+  - 29 歳、東大阪・有限会社古谷商店 取締役(金属リサイクル業 75 年家業)
+  - エンジニアではない。Claude Code で社内 AI システムを内製した経験者
+  - 内製実績:
+    - 金属盗対策法施行当日の届出完了・身分証確認 AI(業界誌掲載)
+    - 現場日報 / 運転日報のデジタル化システム
+    - 金属相場価格表 Web ビューワー
+  - 「はじめの一歩 AI 塾」を主宰、対象は **従業員 10 名以下** の経営者・幹部・個人事業主
+  - スローガン: 「俺でもできた。地域の経営者もできるようになって地域を活況に」
+  - 講座差別化: 画面共有のみのオンライン量産講座と違い、参加者ごとの
+    「業務への落とし込み」を 壁打ち形式 で対面提供
+
+  文体ルール:
+  - 一人称は「僕」
+  - 「エンジニアじゃないけど」「専門家じゃないけど」を恥じずに使う
+  - 失敗談・つまずきを書く(完璧な成功者像にしない)
+  - 「あなたも」より「**同じ立場の中小経営者の**」「俺でもできた」を使う
+  - 「業務外注 vs 内製」「コスト」「現場感」が刺さるキーワード
+  - 文末は「〜と思います」「〜と感じています」基本、断定は避ける
+  - 1 投稿は X = 140 字 / Threads = 500 字 / IG = 200-400 字 + ハッシュタグ
+
+  禁止事項:
+  - 誇張・断言・煽り表現
+  - 特定企業・個人への批判
+  - 政治的に偏った表現
+  - 化学・工学の細部断定(化学はリサイクル本業側、本リポでは AI 中心)
+  - 「AI で何でもできる」のような過信を煽る表現
+
+
+# ===========================================================================
+# A. キュレーション機能(2026-06-22 設計)
+# ===========================================================================
+#
+# watchlist の他者バズ投稿(直近 24h、100 いいね以上)を取得し、Claude が
+# 「古谷さん文脈で気になる top 3」+「引用 RT 用の一言案」+「自分の角度
+# からの別投稿案」を抽出する。
+#
+# 配信先: #hajime-curation
+# 配信時刻: 毎日 07:00 JST
+curation:
+  system_prompt_addon: |
+    今回は「他者の AI 関連バズ投稿を観察して、古谷さんが乗っかれそうな
+    ものを 3 つ抽出する」役割です。投稿者を評価するのではなく、古谷さんが
+    引用 RT or 別投稿でリアクションする時のフックを探すのが目的。
+
+    抽出基準:
+    - 古谷さんのコア領域 (AI 内製 / 中小経営者の AI 導入 / 外注 vs 内製 /
+      地域コミュニティ / Claude Code 等具体ツール) と接続できる投稿
+    - 「俺でもできた」「同じ立場で動ける」と古谷さんが言える素材
+    - 数字 / 体験談 / 具体例 が含まれる投稿は優先
+
+    避けるもの:
+    - 高度すぎる技術系(LLM 内部実装 / 数式論文 / 研究者向け)
+    - 自慢系(年商 X 億 / 月 100 万円稼ぐ系)
+    - 特定企業・個人への批判
+    - 政治色が強いもの
+
+  user_prompt_tmpl: |
+    以下は古谷さんがウォッチしている AI 関連発信者の直近 24h 投稿群です。
+    古谷さん本人が「お、これ反応したい」と思う投稿を **top 3** だけ抽出
+    してください。
+
+    【発信者と投稿】
+    {tweets_block}
+
+    【出力ルール】
+    各 highlight に以下のフィールドを含める:
+      - tweet_id        : 元投稿の ID(そのまま入れる)
+      - author_handle   : 投稿者の handle(先頭 @ なし)
+      - why_relevant    : なぜ古谷さん文脈で気になるか(40-80 字)
+      - quote_draft     : 引用 RT 時に古谷さんが添える一言の **完成形** (60-100 字)
+                          ・本人の一人称「僕」で書く
+                          ・元投稿への敬意は保ちつつ、本人の視点を 1 つ足す
+                          ・「同意+1 つの補足」「自分なら別の切り口」「現場の体験で受ける」
+                          ・ハッシュタグや URL は付けない
+                          ・@相手 は X 側で自動付与されるので不要
+      - own_post_draft  : 引用せず、本人の角度から別投稿として出す案 (100-130 字)
+                          ・元投稿の核心を踏まえつつ、独立した投稿として成立
+                          ・「中小経営者目線」「内製の現場感」が出るとなお良い
+
+    【出力形式】
+    JSON のみ。前置きや解説は書かないでください。
+
+    {{
+      "highlights": [
+        {{
+          "tweet_id": "...",
+          "author_handle": "...",
+          "why_relevant": "...",
+          "quote_draft": "引用 RT 用 60-100 字、URL・ハッシュタグなし",
+          "own_post_draft": "別投稿用 100-130 字、URL・ハッシュタグなし"
+        }},
+        ...
+      ]
+    }}
+
+
+# ===========================================================================
+# B. 基礎用語解説機能(2026-06-22 設計)
+# ===========================================================================
+#
+# basics_catalog から 1 日 1 単語ピックアップして、Claude が古谷さんの
+# 文体で初心者向け 140 字解説を生成する。
+#
+# 配信先: #hajime-basics
+# 配信時刻: 毎日 12:00 JST
+basics:
+  system_prompt_addon: |
+    今回は「AI 基礎用語を、エンジニアじゃない中小経営者にも分かる言葉で
+    解説する」役割です。
+
+    解説の方針:
+    - 専門用語を **専門用語で説明しない**(再帰的解説を避ける)
+    - **比喩 / 身近な例え** で噛み砕く(料理・町工場・経営の例えが効く)
+    - 古谷さん自身の内製経験 (金属盗 AI / 日報 / 相場ビューワー) を
+      自然に絡められればなお良い
+    - 「俺でもできた」感を残す
+    - 「これ知ると 何ができるようになるか」 を 1 文 入れる
+
+    避けるもの:
+    - 教科書的な定義の丸写し
+    - 「○○ということです」で終わる無味乾燥な説明
+    - 中小経営者には縁遠い研究文脈
+
+  user_prompt_tmpl: |
+    今日 X に投稿する「AI 基礎用語解説」を 1 つ作ってください。
+
+    【今日の用語】
+    用語: {term}({en})
+    Tier: {tier}
+    やさしい説明(参考): {description}
+    投稿時の切り口(参考): {angle}
+
+    【出力ルール】
+    - **140 字以下を絶対厳守**(X の制限。1 字でも超えたら投稿不可)
+    - 目安は 120〜135 字
+    - 一人称「僕」、文末「〜と思います」基調
+    - 専門用語は使わない、または使うなら一言で説明添える
+    - 比喩・身近な例えがあるとなお良い
+    - 古谷さん本人の内製経験(金属盗 AI / 日報 / 相場ビューワー)に
+      自然に絡められたら絡める
+    - ハッシュタグ・URL なし
+
+    【出力形式】
+    JSON のみ。
+
+    {{
+      "text": "140 字以内の本文(URL・ハッシュタグなし)"
+    }}
+
+
+# ===========================================================================
+# AI 基礎用語カタログ(34 語、2026-06-22 確定)
+# ===========================================================================
+#
+# 詳細は memory file `hajime_ai_juku_basics_catalog.md` 参照。
+# Tier 1 から順に出していく想定(運用しながら順序調整可)。
+basics_catalog:
+  # --- Tier 1: 入門 5 語 ---
+  - id: 1
+    term: 生成AI
+    en: Generative AI
+    tier: 1
+    description: 文章・画像・コードを「作り出す」AI。検索じゃなくて生成
+    angle: Google で検索する時代から、AI に頼む時代へ
+
+  - id: 2
+    term: LLM
+    en: Large Language Model
+    tier: 1
+    description: 大量の文章で学習した、文章を扱う AI の総称
+    angle: LLM って結局なに? ChatGPT との関係
+
+  - id: 3
+    term: ChatGPT
+    en: ChatGPT
+    tier: 1
+    description: OpenAI 社の対話 AI。多くの人にとって AI = これ
+    angle: ChatGPT 使ってる人は知らないと損する 3 つ
+
+  - id: 4
+    term: プロンプト
+    en: Prompt
+    tier: 1
+    description: AI に渡す「お願いの文章」。結果の良し悪しはこれで 8 割決まる
+    angle: いいプロンプトと駄目なプロンプトの違い
+
+  - id: 5
+    term: ハルシネーション
+    en: Hallucination
+    tier: 1
+    description: AI が自信ありげにウソをつく現象。最大の落とし穴
+    angle: うちの納品書に AI が架空の金額書いた話
+
+  # --- Tier 2: 経営者向け 10 語 ---
+  - id: 6
+    term: AIエージェント
+    en: AI Agent
+    tier: 2
+    description: AI が自分で考えて行動するタイプ(ChatGPT は答えるだけ)
+    angle: 答える AI と動く AI の決定的な違い
+
+  - id: 7
+    term: 自動化
+    en: Automation
+    tier: 2
+    description: 人間がやってた繰り返し作業を AI がやる
+    angle: うちで月 20 時間消えてた作業を AI に渡した話
+
+  - id: 8
+    term: RAG
+    en: Retrieval-Augmented Generation
+    tier: 2
+    description: AI に社内資料を読ませて回答させる仕組み
+    angle: 社内マニュアルを AI に答えさせる方法
+
+  - id: 9
+    term: API
+    en: Application Programming Interface
+    tier: 2
+    description: アプリ同士をつなぐ窓口
+    angle: API って何? エンジニアじゃない人向け解説
+
+  - id: 10
+    term: トークン
+    en: Token
+    tier: 2
+    description: AI が文章を扱う最小単位。料金もこれで計算される
+    angle: AI の料金、なんで「字数」じゃなくて「トークン」?
+
+  - id: 11
+    term: コンテキスト
+    en: Context
+    tier: 2
+    description: AI が一度に「覚えていられる」情報量
+    angle: Claude と ChatGPT、覚えていられる量がこんなに違う
+
+  - id: 12
+    term: システムプロンプト
+    en: System Prompt
+    tier: 2
+    description: AI に与える役割と性格の指示
+    angle: AI に「社員」になってもらう設定方法
+
+  - id: 13
+    term: マルチモーダル
+    en: Multimodal
+    tier: 2
+    description: 文章だけでなく画像・音声も理解する AI
+    angle: 現場写真を AI に見せて伝票作る話
+
+  - id: 14
+    term: 業務効率化
+    en: DX / Productivity
+    tier: 2
+    description: AI を使った時短・コスト削減の総称
+    angle: DX って大袈裟。本当は小さく始める方が成功する
+
+  - id: 15
+    term: 内製
+    en: In-house Development
+    tier: 2
+    description: 外注せず自社で AI ツールを作ること
+    angle: 外注 100 万 vs 内製 1 万円、何が違うか
+
+  # --- Tier 3: コーディング・ツール 10 語 ---
+  - id: 16
+    term: Claude Code
+    en: Claude Code
+    tier: 3
+    description: Anthropic 社のターミナル型 AI コーディング
+    angle: Claude Code が ChatGPT より中小向きな 3 つの理由
+
+  - id: 17
+    term: ChatGPT (Code Interpreter)
+    en: ChatGPT
+    tier: 3
+    description: OpenAI の Web 型 AI コーディング
+    angle: ChatGPT で出来る簡単な業務自動化
+
+  - id: 18
+    term: GitHub Copilot
+    en: GitHub Copilot
+    tier: 3
+    description: プログラマー向けの AI 補完ツール
+    angle: Copilot は本職プログラマー向け、中小経営者は別ツールが良い
+
+  - id: 19
+    term: Cursor
+    en: Cursor
+    tier: 3
+    description: AI を使うコードエディタ。VS Code がベース
+    angle: Cursor で 30 分でアプリが作れる時代
+
+  - id: 20
+    term: バイブコーディング
+    en: Vibe coding
+    tier: 3
+    description: コードを書かず、AI に作りたいものを伝えるだけで実装する手法
+    angle: コード書けなくていい時代、本当に来てます
+
+  - id: 21
+    term: Function Calling / Tool Use
+    en: Function Calling
+    tier: 3
+    description: AI が外部のツールを呼び出す機能
+    angle: AI が自分で電卓を取り出す、を中小経営に応用
+
+  - id: 22
+    term: MCP
+    en: Model Context Protocol
+    tier: 3
+    description: AI と外部ツールをつなぐ規格
+    angle: MCP を知れば AI 活用の 2 段階目に行ける
+
+  - id: 23
+    term: Embedding
+    en: Embedding
+    tier: 3
+    description: 文章を数字のベクトルに変換する仕組み。社内検索の基礎
+    angle: AI が「似てる文章」を見つける仕組み
+
+  - id: 24
+    term: Git
+    en: Git
+    tier: 3
+    description: コードのバージョン管理。AI で開発するなら必須
+    angle: AI に書かせたコードを失わない仕組み
+
+  - id: 25
+    term: デプロイ
+    en: Deploy
+    tier: 3
+    description: 作ったツールを本番環境で動かすこと
+    angle: 作って終わりじゃない、デプロイで実用化
+
+  # --- Tier 3 (Git 操作系) 4 語 ---
+  - id: 31
+    term: Push
+    en: Push
+    tier: 3
+    description: ローカル(手元)のコードをリモート(GitHub 等)に上げる操作
+    angle: Push って「送信」のこと、ボタン 1 つで作業全部が同期する話
+
+  - id: 32
+    term: Pull
+    en: Pull
+    tier: 3
+    description: リモートの最新を手元にダウンロードする操作
+    angle: 他人と並行作業する時の Pull の使い方
+
+  - id: 33
+    term: Commit
+    en: Commit
+    tier: 3
+    description: 一区切りで変更内容を「記録」する操作
+    angle: Commit は「栞」。後で「なぜこう変えたか」を思い出せる
+
+  - id: 34
+    term: Branch
+    en: Branch
+    tier: 3
+    description: 並行で別バージョンを試すための分岐
+    angle: Branch を切る = 失敗しても元に戻せる安全弁
+
+  # --- Tier 4: 中級 5 語 ---
+  - id: 26
+    term: ファインチューニング
+    en: Fine-tuning
+    tier: 4
+    description: 既存の AI に自社データを追加学習させる手法
+    angle: ファインチューニング、99% の中小企業は不要です
+
+  - id: 27
+    term: Few-shot プロンプティング
+    en: Few-shot Prompting
+    tier: 4
+    description: お手本を 2-3 個見せて AI に真似させる手法
+    angle: お手本見せるだけで、AI の精度が劇的に変わる話
+
+  - id: 28
+    term: 推論 / 学習
+    en: Inference / Training
+    tier: 4
+    description: AI を「使う」(推論)と「育てる」(学習)の違い
+    angle: AI を使うだけなら GPU 不要、学習させると必要
+
+  - id: 29
+    term: マルチエージェント
+    en: Multi-agent
+    tier: 4
+    description: 複数の AI が協力して作業する仕組み
+    angle: 役割分担した AI チーム、中小でも組める時代
+
+  - id: 30
+    term: ハルシネーション対策
+    en: Grounding / Citation
+    tier: 4
+    description: AI のウソを出典つきで抑える設計
+    angle: 「どこから」そう言ったか、AI に答えさせる方法

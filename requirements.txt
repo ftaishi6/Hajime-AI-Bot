@@ -1,0 +1,20 @@
+# Discord Bot
+discord.py>=2.5
+
+# APScheduler
+APScheduler>=3.10
+
+# Claude API
+anthropic>=0.40.0
+
+# X API (read-only, Bearer Token 認証)
+tweepy>=4.14.0
+
+# YAML 設定ファイル
+pyyaml>=6.0.1
+
+# 環境変数管理
+python-dotenv>=1.0.0
+
+# HTTPS 証明書(macOS 環境保険)
+certifi>=2024.2.2

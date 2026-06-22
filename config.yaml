@@ -1,0 +1,71 @@
+# Hajime-AI-Bot 設定ファイル
+#
+# AI 塾運用の watchlist + 各機能の挙動を制御。
+# - watch_accounts: 起動時に DB と sync(配信者ウォッチの初期メンバー)
+# - 各機能の閾値・時刻は将来増える予定(現状は最小限)
+
+# ===========================================================================
+# 発信者ウォッチ(キュレーション)対象アカウント
+# ===========================================================================
+#
+# 古谷さんが普段見ている AI 関連発信者を中心に 11 アカウントで MVP スタート。
+# 運用しながら /watch add @handle で増やす(20-30 目標)。
+#
+# カテゴリ別(参考):
+#   official_en   : Anthropic / OpenAI 系 英語公式
+#   jp_influencer : 国内 AI 系著名発信者
+#   indie_dev     : 個人開発系
+#   sme_owner     : 中小経営者 × AI
+watch_accounts:
+  # --- AI 公式(英語) ---
+  - handle: AnthropicAI
+    notes: Anthropic 英語公式
+  - handle: claudeai
+    notes: Claude プロダクト公式
+  - handle: OpenAI
+    notes: OpenAI 英語公式
+  - handle: OpenAIDevs
+    notes: OpenAI 開発者向け
+
+  # --- 国内 AI 著名発信者 ---
+  - handle: shi3z
+    notes: 清水亮、AI スタートアップ重鎮
+  - handle: umiyuki_ai
+    notes: 初心者向け AI 発信
+  - handle: karaage0703
+    notes: からあげ氏、AI Tips
+  - handle: nishio
+    notes: 西尾泰和、AI 解説
+
+  # --- 個人開発系 ---
+  - handle: youtoy
+    notes: 個人開発 + AI
+  - handle: hituji_1234
+    notes: 古谷さん指定追加
+
+  # --- 中小経営者 × AI ---
+  - handle: yuusaku_buddica
+    notes: 中野優作、CAR and LIFE.
+
+# ===========================================================================
+# キュレーション機能の閾値
+# ===========================================================================
+curation:
+  # 直近 N 時間の投稿だけ対象
+  hours: 24
+  # 1 ユーザーあたり最大 何件取得するか
+  max_per_user: 10
+  # 「バズ」と判定する最低 like 数(これ以下は無視)
+  min_likes: 100
+  # Claude が抽出する top N
+  top_n: 3
+
+# ===========================================================================
+# 基礎用語解説機能
+# ===========================================================================
+basics:
+  # 1 日あたり配信する単語数
+  per_day: 1
+  # 配信時刻(JST)
+  hour: 12
+  minute: 0

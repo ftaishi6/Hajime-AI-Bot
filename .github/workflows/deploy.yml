@@ -1,0 +1,54 @@
+name: Deploy to VPS (Hajime-AI-Bot)
+
+# main への push を受けて VPS に SSH → git pull → 依存差分があれば pip install
+# → systemctl restart hajime-ai-bot。
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'storage/**'
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+            cd /opt/hajime-ai-bot/repo
+            git fetch origin main
+            git reset --hard origin/main
+            /opt/hajime-ai-bot/venv/bin/pip install -q -r requirements.txt
+            # systemd unit が repo 配下にあれば symlink で同期
+            if [ -f /opt/hajime-ai-bot/repo/deploy/hajime-ai-bot.service ]; then
+              ln -sf /opt/hajime-ai-bot/repo/deploy/hajime-ai-bot.service /etc/systemd/system/hajime-ai-bot.service
+              systemctl daemon-reload
+            fi
+            sudo systemctl restart hajime-ai-bot.service
+            sleep 2
+            sudo systemctl status hajime-ai-bot.service --no-pager -n 5 || true
+
+      - name: Notify Discord on success
+        if: success()
+        run: |
+          curl -s -H "Content-Type: application/json" \
+            -d "{\"content\": \"✅ **Hajime-AI-Bot Deploy success** — \`${{ github.sha }}\` by ${{ github.actor }}\n> ${GITHUB_EVENT_HEAD_COMMIT_MESSAGE:-(no message)}\"}" \
+            "${{ secrets.HAJIME_DISCORD_WEBHOOK_SYSLOG }}" || true
+        env:
+          GITHUB_EVENT_HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+
+      - name: Notify Discord on failure
+        if: failure()
+        run: |
+          curl -s -H "Content-Type: application/json" \
+            -d "{\"content\": \"❌ **Hajime-AI-Bot Deploy FAILED** — \`${{ github.sha }}\` by ${{ github.actor }}\n> Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+            "${{ secrets.HAJIME_DISCORD_WEBHOOK_SYSLOG }}" || true
