@@ -12,7 +12,7 @@ import logging
 import discord
 from discord import app_commands
 
-from . import dispatcher, repo
+from . import dispatcher, git_sync, repo
 
 log = logging.getLogger("hajime-ai-bot.cases.commands")
 
@@ -122,6 +122,32 @@ def setup(bot: discord.Client) -> None:
             msg = msg[:1980] + "\n…(truncated)"
         await interaction.response.send_message(msg, ephemeral=True)
 
+    @bot.tree.command(
+        name="hjm-case-sync",
+        description="HajimeCases リポを今すぐ git pull → DB 反映",
+    )
+    async def hjm_case_sync(interaction: discord.Interaction) -> None:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        try:
+            result = await asyncio.to_thread(git_sync.sync_from_git)
+        except git_sync.GitSyncError as e:
+            await interaction.followup.send(
+                f"❌ git sync 失敗\n```{e}```", ephemeral=True
+            )
+            return
+        lines = [
+            f"✅ git sync 完了 (head=`{result.head_sha[:10]}`)",
+            f"- ファイル: **{result.files_seen}** 件",
+            f"- 反映: **{result.upserted}** 件",
+            f"- 変更なし: {result.skipped_unchanged} 件",
+            f"- スキップ(parse 失敗 or case_id 欠落): {result.skipped_invalid} 件",
+        ]
+        if result.errors:
+            lines.append(f"\n⚠ エラー {len(result.errors)} 件:")
+            for e in result.errors[:5]:
+                lines.append(f"  - {e}")
+        await interaction.followup.send("\n".join(lines), ephemeral=True)
+
     log.info(
-        "registered /hjm-case-list, /hjm-case-post-now, /hjm-case-show commands"
+        "registered /hjm-case-list, /hjm-case-post-now, /hjm-case-show, /hjm-case-sync commands"
     )

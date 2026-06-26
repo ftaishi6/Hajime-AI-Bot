@@ -16,9 +16,11 @@ from typing import TYPE_CHECKING
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from .features.basics.dispatcher import generate_and_dispatch as basics_generate_and_dispatch
 from .features.cases.dispatcher import generate_and_dispatch as cases_generate_and_dispatch
+from .features.cases.git_sync import sync_from_git as cases_git_sync
 from .features.curation.dispatcher import run_and_dispatch as curation_run_and_dispatch
 
 if TYPE_CHECKING:
@@ -80,7 +82,32 @@ def start_scheduler(bot: "discord.Client") -> AsyncIOScheduler:
         misfire_grace_time=3600,
     )
 
+    # HajimeCases リポ(Obsidian Vault)を 30 分間隔で git pull → DB 反映。
+    # 古谷さんが Obsidian で書いて push → 30 分以内に Bot 側に反映される。
+    # 手動 /hjm-case-sync でも同じ関数を呼ぶ。
+    sched.add_job(
+        cases_git_sync,
+        IntervalTrigger(minutes=30),
+        id="cases.git_sync",
+        name="cases: git sync (every 30 min)",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=600,
+    )
+
     sched.start()
+
+    # 起動直後に 1 回 git_sync を即実行(初回反映を 30 分待たせない)
+    try:
+        from datetime import datetime, timedelta  # noqa: PLC0415
+        from zoneinfo import ZoneInfo  # noqa: PLC0415
+        sched.modify_job(
+            "cases.git_sync",
+            next_run_time=datetime.now(ZoneInfo("Asia/Tokyo")) + timedelta(seconds=15),
+        )
+        log.info("cases.git_sync armed for immediate first run (+15s)")
+    except Exception:
+        log.exception("failed to arm immediate git_sync")
     log.info(
         "scheduler started with %d job(s): %s",
         len(sched.get_jobs()),
