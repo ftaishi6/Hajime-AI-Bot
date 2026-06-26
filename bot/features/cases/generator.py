@@ -16,7 +16,7 @@ from anthropic import Anthropic
 log = logging.getLogger("hajime-ai-bot.cases.generator")
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
-DEFAULT_MAX_TOKENS = 1500
+DEFAULT_MAX_TOKENS = 2500
 
 VALID_PATTERNS = ("story", "numbers", "introspection")
 
@@ -74,13 +74,17 @@ def generate_patterns(
     system_base = persona["system_prompt"]
     cfg = persona["cases"]["generator"]
     system_prompt = (system_base.rstrip() + "\n\n" + cfg["system_prompt_addon"]).strip()
+    # raw_text(本文全文)を主素材として渡す。古谷さんの自由フォーマット
+    # (## 01: / ## 02: / 【何が起きたか】等)をそのまま Claude が読む。
+    raw_text = case.get("raw_text") or ""
+    # 本文長すぎる場合は安全側で切る(Claude max_tokens を超えないように)
+    if len(raw_text) > 24000:
+        raw_text = raw_text[:24000] + "\n\n…(本文が長いためここで切り詰め)"
     user_prompt = cfg["user_prompt_tmpl"].format(
         title=case.get("title", ""),
-        challenge=case.get("challenge", ""),
-        implementation=case.get("implementation", ""),
-        outcome=case.get("outcome", ""),
-        impact_numbers=case.get("impact_numbers", "") or "(なし)",
         period=case.get("period", "") or "(明示なし)",
+        impact_numbers=case.get("impact_numbers", "") or "(なし)",
+        raw_text=raw_text or "(本文なし)",
     )
 
     client = Anthropic(api_key=api_key)

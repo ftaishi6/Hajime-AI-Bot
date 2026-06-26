@@ -31,14 +31,9 @@ from ... import db as _db
 log = logging.getLogger("hajime-ai-bot.cases.git_sync")
 
 DEFAULT_VAULT_PATH = Path(os.environ.get("HAJIME_CASES_VAULT_PATH", "/opt/hajime-ai-bot/cases-vault"))
-DEFAULT_GLOB = os.environ.get("HAJIME_CASES_VAULT_GLOB", "Cases/*.md")
+# vault root 直下の .md ファイル(README.md 等は frontmatter 無いので自動 skip)
+DEFAULT_GLOB = os.environ.get("HAJIME_CASES_VAULT_GLOB", "*.md")
 
-# Bot が読む section 見出し ⇒ DB カラム
-_SECTION_MAP = {
-    "課題": "challenge",
-    "実装": "implementation",
-    "成果": "outcome",
-}
 _VALID_STATUSES = {"active", "paused", "gone"}
 
 
@@ -193,14 +188,19 @@ def _git_file_last_sha(vault_path: Path, rel_path: str) -> str | None:
 
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)$", re.S)
-_SECTION_RE = re.compile(r"^##\s+(.+?)\s*\n(.*?)(?=^##\s+|\Z)", re.S | re.M)
 
 
 def _parse_case_md(text: str) -> dict | None:
-    """Markdown 全文を {case_id, title, ...} dict に。case_id 欠落なら None。"""
+    """Markdown を {case_id, title, raw_text, ...} dict に。
+
+    frontmatter が無い / case_id が無い → None(skip 対象)。
+    本文の section 抽出はしない(古谷さんのフォーマットは自由なので、
+    本文全文を generator (Claude) に渡す)。
+    """
     m = _FRONTMATTER_RE.match(text)
     if not m:
-        raise GitSyncError("frontmatter (--- ... ---) が見つかりません")
+        # README.md など frontmatter 無いファイルは skip
+        return None
     fm_yaml = m.group(1)
     body = m.group(2)
 
@@ -213,18 +213,12 @@ def _parse_case_md(text: str) -> dict | None:
 
     case_id = fm.get("case_id")
     if not isinstance(case_id, int):
-        # case_id が未設定 or 非数値 → 未確定とみなして skip
         return None
 
     status = str(fm.get("status", "active")).strip().lower()
     if status not in _VALID_STATUSES:
         log.warning("invalid status=%r in case_id=%s, fallback active", status, case_id)
         status = "active"
-
-    sections = _extract_sections(body)
-    challenge = sections.get("challenge", "").strip()
-    implementation = sections.get("implementation", "").strip()
-    outcome = sections.get("outcome", "").strip()
 
     return {
         "case_id": int(case_id),
@@ -233,23 +227,13 @@ def _parse_case_md(text: str) -> dict | None:
         "source_url": str(fm.get("source_url", "") or "").strip(),
         "impact_numbers": str(fm.get("impact_numbers", "") or "").strip(),
         "status": status,
-        "challenge": challenge,
-        "implementation": implementation,
-        "outcome": outcome,
-        "raw_text": text,
+        # 本文全文を raw_text に。challenge / implementation / outcome は
+        # 古谷さんのフォーマットでは存在しないので空文字。
+        "challenge": "",
+        "implementation": "",
+        "outcome": "",
+        "raw_text": body.strip(),  # 全文を Claude に渡すための本文
     }
-
-
-def _extract_sections(body: str) -> dict[str, str]:
-    """## 課題 / 実装 / 成果 を {challenge, implementation, outcome} に抽出。"""
-    out: dict[str, str] = {}
-    for m in _SECTION_RE.finditer(body):
-        heading = m.group(1).strip()
-        content = m.group(2).strip()
-        key = _SECTION_MAP.get(heading)
-        if key:
-            out[key] = content
-    return out
 
 
 # --- DB upsert ----------------------------------------------------------
