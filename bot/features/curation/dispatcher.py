@@ -2,10 +2,9 @@
 
 cron (毎日 07:00 JST) と手動 /hjm-curate の両方から呼ぶ。
 
-配信フォーマット(各 highlight = 3 Embed):
+配信フォーマット(各 highlight = 2 Embed):
   1) 元投稿 Embed(タップで X 元投稿へ)
   2) 💬 引用 RT 案 Embed(タップで X intent: text + url=元投稿URL → quote tweet 風)
-  3) ✏️ 別投稿案 Embed(タップで X intent: text のみ → 独立投稿)
 """
 
 from __future__ import annotations
@@ -142,7 +141,7 @@ async def _deliver_one(
     idx: int,
     total: int,
 ) -> None:
-    """1 つの highlight を 3 Embed で投下(元投稿 + 引用 RT 案 + 別投稿案)。"""
+    """1 つの highlight を 2 Embed で投下(元投稿 + 引用 RT 案)。"""
     body = hl.text
     if len(body) > 500:
         body = body[:495] + "…"
@@ -192,24 +191,4 @@ async def _deliver_one(
             )
         )
 
-    # Embed 3: 別投稿案(text のみ)
-    own = (hl.own_post_draft or "").strip()
-    if own:
-        intent_url = _build_intent_url(own)
-        olen = len(own)
-        marker = (
-            f"⚠ **{olen}字 (140 超過、短縮要)**" if olen > 140 else f"{olen}字"
-        )
-        embeds.append(
-            discord.Embed(
-                title="✏️ 別投稿案(自分の角度で)",
-                url=intent_url,
-                description=(
-                    f"{own}\n\n— *{marker}・タップで X 投稿画面*"
-                ),
-                color=discord.Color.from_rgb(155, 89, 182),
-            )
-        )
-
-    # Discord は 1 メッセージあたり Embed 最大 10 個。3 個なので余裕。
     await channel.send(embeds=embeds)

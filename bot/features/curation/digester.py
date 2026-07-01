@@ -36,8 +36,7 @@ class CurationHighlight:
     author_handle: str
     text: str
     why_relevant: str
-    quote_draft: str       # 引用 RT 用 60-100 字
-    own_post_draft: str    # 独立投稿用 100-130 字
+    quote_draft: str       # 引用 RT に添える一言 30-60 字目安
     url: str
     like_count: int = 0
     retweet_count: int = 0
@@ -215,17 +214,12 @@ def run_curation(
         t = tweet_index[tweet_id]
         author_handle_raw = str(raw.get("author_handle", t.author_handle))
         quote_draft = str(raw.get("quote_draft", "")).strip()
-        own_post_draft = str(raw.get("own_post_draft", "")).strip()
-        # 140 字超過は警告のみ(配信は続ける、dispatcher 側で字数表示)
+        # 140 字超過は警告のみ(配信は続ける、dispatcher 側で字数表示)。
+        # 目安は 30-60 字だが、多少長い分は許容する。
         if quote_draft and len(quote_draft) > 140:
             log.warning(
                 "curation quote_draft over 140 chars (len=%d): %s...",
                 len(quote_draft), quote_draft[:30],
-            )
-        if own_post_draft and len(own_post_draft) > 140:
-            log.warning(
-                "curation own_post_draft over 140 chars (len=%d): %s...",
-                len(own_post_draft), own_post_draft[:30],
             )
         highlights.append(
             CurationHighlight(
@@ -234,7 +228,6 @@ def run_curation(
                 text=t.text,
                 why_relevant=str(raw.get("why_relevant", "")).strip(),
                 quote_draft=quote_draft,
-                own_post_draft=own_post_draft,
                 url=t.url,
                 like_count=t.like_count,
                 retweet_count=t.retweet_count,
